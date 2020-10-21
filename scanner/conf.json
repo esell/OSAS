@@ -1,0 +1,4 @@
+{
+ "dbDSN": "username:password@tcp(dbhost:dbport)/dbname?parseTime=true",
+ "wordlistURL": "https://github.com/danielmiessler/SecLists/raw/master/Discovery/Web-Content/directory-list-lowercase-2.3-big.txt"
+}
