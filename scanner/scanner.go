@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"os"
+	"regexp"
 	"sync"
 	"time"
 
@@ -28,11 +30,12 @@ type stgAcct struct {
 }
 
 var (
-	configFile   = flag.String("c", "conf.json", "config file location")
-	workerCount  = flag.Int("w", 10, "worker count")
-	maxConns     = flag.Int("m", 100, "max connections to host")
-	db           *sql.DB
-	parsedConfig = conf{}
+	configFile         = flag.String("c", "conf.json", "config file location")
+	workerCount        = flag.Int("w", 10, "worker count")
+	maxConns           = flag.Int("m", 100, "max connections to host")
+	isStringAlphabetic = regexp.MustCompile(`^[a-z0-9-]*$`).MatchString
+	db                 *sql.DB
+	parsedConfig       = conf{}
 )
 
 func main() {
@@ -144,7 +147,14 @@ func worker(host string, jobs <-chan string, wg *sync.WaitGroup, workerID int, c
 
 func getContainer(host, dir string, client *http.Client) error {
 
-	resp, err := http.Get("https://" + host + "/" + dir + "?restype=container&comp=list")
+	// try lookup to avoid wasting time
+	_, err := net.LookupHost(host + ".blob.core.windows.net")
+	if err != nil {
+		fmt.Println("DNS lookup failed, exiting")
+		os.Exit(1)
+	}
+
+	resp, err := http.Get("https://" + host + ".blob.core.windows.net/" + dir + "?restype=container&comp=list")
 	if err != nil {
 		return err
 	}
@@ -155,7 +165,7 @@ func getContainer(host, dir string, client *http.Client) error {
 
 	if resp.StatusCode == 200 {
 		//winner
-		fmt.Println("SUCCESS: https://" + host + "/" + dir + "?restype=container&comp=list")
+		fmt.Println("SUCCESS: https://" + host + ".blob.core.windows.net/" + dir + "?restype=container&comp=list")
 		if err != nil {
 			fmt.Println(err)
 			return err
@@ -182,7 +192,7 @@ func getContainer(host, dir string, client *http.Client) error {
 		}
 		defer insertRes.Close()
 
-		_, err = insertRes.Exec("https://"+host+"/"+dir, time.Now())
+		_, err = insertRes.Exec("https://"+host+".blob.core.windows.net/"+dir, time.Now())
 		if err != nil {
 			fmt.Println(err)
 			return err
@@ -208,8 +218,10 @@ func scanLines(path string, results chan<- string) {
 
 	for scanner.Scan() {
 		blah := scanner.Text()
-		results <- blah
-		recordCount++
+		if len(blah) >= 3 && len(blah) <= 63 && isStringAlphabetic(blah) {
+			results <- blah
+			recordCount++
+		}
 	}
 
 	close(results)
