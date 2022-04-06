@@ -47,6 +47,8 @@ The `stg_accts` table is going to be a list of URLs you want to scan, this is wh
 hit that table, find the oldest record and start scanning it. If it finds that it is open, it will update the
 table PLUS put whatever results it finds into the `open_containers` table.
 
+You can install OSAS via `go install github.com/esell/OSAS@latest` if you already have go installed. No pre-built binaries are available yet :(.
+
 There is a sample `config.json` that shows you what your config should look like.
 
 
