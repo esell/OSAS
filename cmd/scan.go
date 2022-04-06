@@ -1,12 +1,10 @@
-package main
+package cmd
 
 import (
 	"bufio"
 	"database/sql"
 	"encoding/json"
-	"flag"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -16,12 +14,8 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/spf13/cobra"
 )
-
-type conf struct {
-	DBDSN       string `json:"dbDSN"`
-	WordlistURL string `json:"wordlistURL"`
-}
 
 type stgAcct struct {
 	URL       string    `json:"url"`
@@ -30,18 +24,29 @@ type stgAcct struct {
 }
 
 var (
-	configFile         = flag.String("c", "conf.json", "config file location")
-	workerCount        = flag.Int("w", 10, "worker count")
-	maxConns           = flag.Int("m", 100, "max connections to host")
-	isStringAlphabetic = regexp.MustCompile(`^[a-z0-9-]*$`).MatchString
-	db                 *sql.DB
-	parsedConfig       = conf{}
+	workerCount  int
+	maxConns     int
+	scanWordList string
+	db           *sql.DB
+	scanCmd      = &cobra.Command{
+		Use:   "scan",
+		Short: "scan a storage account for open blob containers",
+		Long:  `scan a storage account for open blob containers`,
+		Run:   runScan,
+	}
 )
 
-func main() {
-	flag.Parse()
+func init() {
+	rootCmd.AddCommand(scanCmd)
 
-	confFile, err := ioutil.ReadFile(*configFile)
+	scanCmd.Flags().StringVarP(&scanWordList, "wordlist", "w", "words.list", "Word list to use")
+	scanCmd.MarkFlagRequired("wordlist")
+	scanCmd.Flags().IntVarP(&workerCount, "count", "t", 10, "worker count")
+	scanCmd.Flags().IntVarP(&maxConns, "connections", "m", 100, "max connections to host")
+}
+
+func runScan(cmd *cobra.Command, args []string) {
+	confFile, err := ioutil.ReadFile(configFile)
 	if err != nil {
 		fmt.Println("unable to read config file!")
 		os.Exit(1)
@@ -52,38 +57,16 @@ func main() {
 	}
 
 	var wg sync.WaitGroup
-	jobs := make(chan string, *workerCount*1000)
+	jobs := make(chan string, workerCount*1000)
 
 	tr := &http.Transport{
-		MaxIdleConns:        *maxConns,
-		MaxIdleConnsPerHost: *maxConns,
+		MaxIdleConns:        maxConns,
+		MaxIdleConnsPerHost: maxConns,
 	}
 	client := &http.Client{
 		Timeout:   10 * time.Second,
 		Transport: tr,
 	}
-
-	fmt.Println("downloading wordlist: ", parsedConfig.WordlistURL)
-	response, err := http.Get(parsedConfig.WordlistURL)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-
-	file, err := os.Create("word.list")
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-
-	_, err = io.Copy(file, response.Body)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-
-	response.Body.Close()
-	file.Close()
 
 	db, err = sql.Open("mysql", parsedConfig.DBDSN)
 	if err != nil {
@@ -108,7 +91,7 @@ func main() {
 
 	fmt.Println("scanning: ", stgAcctTemp.URL)
 
-	for w := 1; w <= *workerCount; w++ {
+	for w := 1; w <= workerCount; w++ {
 		wg.Add(1)
 		go worker(stgAcctTemp.URL, jobs, &wg, w, client)
 	}
@@ -125,9 +108,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	go scanLines("word.list", jobs)
+	go scanLines(scanWordList, jobs)
 
 	wg.Wait()
+
 }
 
 func worker(host string, jobs <-chan string, wg *sync.WaitGroup, workerID int, client *http.Client) {
@@ -153,7 +137,6 @@ func getContainer(host, dir string, client *http.Client) error {
 		fmt.Println("DNS lookup failed, exiting")
 		os.Exit(1)
 	}
-
 	resp, err := http.Get("https://" + host + ".blob.core.windows.net/" + dir + "?restype=container&comp=list")
 	if err != nil {
 		return err
@@ -216,9 +199,13 @@ func scanLines(path string, results chan<- string) {
 	scanner := bufio.NewScanner(file)
 	scanner.Split(bufio.ScanWords)
 
+	// container names can only have lowercase, numbers and a dash
+	var isValidContainerName = regexp.MustCompile(`^[a-z0-9-]*$`).MatchString
+
 	for scanner.Scan() {
 		blah := scanner.Text()
-		if len(blah) >= 3 && len(blah) <= 63 && isStringAlphabetic(blah) {
+		// container names must be 3-63 chars
+		if len(blah) >= 3 && len(blah) <= 63 && isValidContainerName(blah) {
 			results <- blah
 			recordCount++
 		}

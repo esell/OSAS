@@ -1,8 +1,7 @@
-package main
+package cmd
 
 import (
 	"encoding/xml"
-	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -10,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"text/tabwriter"
+
+	"github.com/spf13/cobra"
 )
 
 type EnumerationResults struct {
@@ -40,21 +41,33 @@ type EnumerationResults struct {
 	NextMarker string `xml:"NextMarker"`
 }
 
-var (
-	saurl      = flag.String("u", "https://blah.blob.core.windows.net/blah", "URL")
-	doDownload = flag.Bool("d", false, "download blobs")
-)
+var listCmd = &cobra.Command{
+	Use:   "list",
+	Short: "list contents, and optionally download those contents, of an open blob container",
+	Long:  `list contents, and optionally download those contents, of an open blob container`,
+	Run:   runList,
+}
 
-func main() {
-	flag.Parse()
+var doDownload bool
+var saurl string
 
-	if *saurl == "https://blah.blob.core.windows.net/blah" {
+func init() {
+	rootCmd.AddCommand(listCmd)
+
+	listCmd.Flags().BoolVarP(&doDownload, "download", "d", false, "download files")
+	listCmd.Flags().StringVarP(&saurl, "url", "u", "https://blah.blob.core.windows.net/blah", "Storage Account URL (required)")
+	listCmd.MarkFlagRequired("url")
+}
+
+func runList(cmd *cobra.Command, args []string) {
+
+	if saurl == "https://blah.blob.core.windows.net/blah" {
 		fmt.Println("dur")
 		os.Exit(1)
 	}
 
 	var sa EnumerationResults
-	response, err := http.Get(*saurl + "?restype=container&comp=list")
+	response, err := http.Get(saurl + "?restype=container&comp=list")
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -76,17 +89,17 @@ func main() {
 	fmt.Fprintf(w, "\n %s\t%s\t%s\t%s\t", "--------------", "--------------", "--------------", "--------------")
 	for _, b := range sa.Blobs.Blob {
 		if b.URL == "" {
-			fmt.Fprintf(w, "\n %s\t%s\t%s\t%s\t", b.Name, b.Properties.LastModified, b.Properties.ContentLength, *saurl+"/"+b.Name)
+			fmt.Fprintf(w, "\n %s\t%s\t%s\t%s\t", b.Name, b.Properties.LastModified, b.Properties.ContentLength, saurl+"/"+b.Name)
 		} else {
 			fmt.Fprintf(w, "\n %s\t%s\t%s\t%s\t", b.Name, b.Properties.LastModified, b.Properties.ContentLength, b.URL)
 		}
 	}
 	fmt.Fprintf(w, "\n\n")
 
-	if *doDownload {
+	if doDownload {
 		for _, b := range sa.Blobs.Blob {
 			if b.URL == "" {
-				downloadBlob(b.Name, *saurl+"/"+b.Name)
+				downloadBlob(b.Name, saurl+"/"+b.Name)
 			} else {
 				downloadBlob(b.Name, b.URL)
 			}
