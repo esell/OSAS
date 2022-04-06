@@ -14,6 +14,13 @@ are three supported commands:
 * load: load a list of targets into the database
 * scan: this is the actual application that does the scanning
 
+Your typical workflow might look something like this:
+
+* use `list` to load in a list of targets. These will be the storage accounts you want to scan and you just need the name, OSAS will tack on the ".blob.core.windows.net" for you, so you just need to provide the actual storage account name.
+* use `scan` to scan the target(s). `scan` will use the word list you give it and check each entry to see if it is an open blob container in the storage account (blah.blob.core.windows.net/1, blah.blob.core.windows.net/2, blah.blob.core.windows.net/3, etc)
+* use `list` to see what goodies you found :)
+
+
 You fire up however many `scan` instances you want, and then you can use `list` to display the contents of the open blob containers `scan` finds.
 
 As everything is stored in a database, the automation possibilities are pretty big. Maybe automate the calling of `list` on open accounts and store those results in another table? Maybe take those results and, based on file type, do some OCR? 
