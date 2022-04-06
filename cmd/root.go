@@ -18,7 +18,7 @@ var (
 	configFile   string
 	parsedConfig = conf{}
 	rootCmd      = &cobra.Command{
-		Use:   "osas-reborn",
+		Use:   "OSAS",
 		Short: "A tool to scan for open Azure storage account blob containers",
 		Long:  `A tool to scan for open Azure storage account blob containers. Additionally, it supports listing and downloading files from open containers.`,
 	}
